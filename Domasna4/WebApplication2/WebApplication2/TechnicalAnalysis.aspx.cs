@@ -1,46 +1,60 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Net.Http;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using System.Web.UI;
 using System.Web.UI.WebControls;
 
 namespace WebApplication2
 {
-    public partial class Contact : Page
+    public partial class Contact : System.Web.UI.Page
     {
         protected string ChartLabelsJson { get; set; }
         protected string ChartPricesJson { get; set; }
         protected string ChartMovingAveragesJson { get; set; }
 
+        private static readonly HttpClient httpClient = new HttpClient();
+
         protected void Page_Load(object sender, EventArgs e)
         {
             if (!IsPostBack)
             {
-                string url = "https://www.mse.mk/mk/stats/symbolhistory/REPL";
-                List<string> stockIssuerCodes = DataFetcher.Instance.FetchIssuerCodes(url);
+                RegisterAsyncTask(new PageAsyncTask(LoadIssuerCodesAsync));
+            }
+        }
 
-                if (stockIssuerCodes.Count > 0)
-                {
-                    IssuerDropdownList.DataSource = stockIssuerCodes;
-                    IssuerDropdownList.DataBind();
-                    IssuerDropdownList.Items.Insert(0, new ListItem("Select an issuer", ""));
-                }
-                else
-                {
-                    ErrorMessageLabel.Text = "Failed to load issuer codes.";
-                }
+        private async Task LoadIssuerCodesAsync()
+        {
+            string issuerCodeUrl = "https://www.mse.mk/mk/stats/symbolhistory/REPL";
+            var issuerCodes = await FetchIssuerCodesAsync(issuerCodeUrl);
+
+            if (issuerCodes != null && issuerCodes.Count > 0)
+            {
+                IssuerDropdownList.DataSource = issuerCodes;
+                IssuerDropdownList.DataBind();
+                IssuerDropdownList.Items.Insert(0, new ListItem("Select an issuer", ""));
+            }
+            else
+            {
+                ErrorMessageLabel.Text = "Failed to load issuer codes.";
             }
         }
 
         protected void DisplayDataButton_Click(object sender, EventArgs e)
         {
+            RegisterAsyncTask(new PageAsyncTask(DisplayDataAsync));
+        }
+
+        private async Task DisplayDataAsync()
+        {
             string selectedStockIssuer = IssuerDropdownList.SelectedValue;
 
             if (!string.IsNullOrEmpty(selectedStockIssuer))
             {
-                string url = $"https://www.mse.mk/mk/stats/symbolhistory/{selectedStockIssuer}";
-                DataTable stockData = DataFetcher.Instance.FetchStockData(url);
+                string stockDataUrl = $"https://www.mse.mk/mk/stats/symbolhistory/{selectedStockIssuer}";
+                var stockData = await FetchStockDataAsync(stockDataUrl);
 
                 if (stockData != null)
                 {
@@ -82,6 +96,75 @@ namespace WebApplication2
                 ErrorMessageLabel.Text = "Please select an issuer from the dropdown.";
             }
         }
+
+        private async Task<List<string>> FetchIssuerCodesAsync(string url)
+        {
+            string apiUrl = $"https://localhost:44349/api/IssuerCode?url={Uri.EscapeDataString(url)}";
+            HttpClientHandler handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+            HttpClient httpClient = new HttpClient(handler);
+
+            var response = await httpClient.GetAsync(apiUrl);
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return JsonConvert.DeserializeObject<List<string>>(content);
+            }
+            return null;
+        }
+
+
+        private async Task<DataTable> FetchStockDataAsync(string url)
+        {
+            
+            string apiUrl = $"https://localhost:44374/api/StockData?url={Uri.EscapeDataString(url)}";
+
+            
+            HttpClientHandler handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+            HttpClient httpClient = new HttpClient(handler);
+
+            
+            var response = await httpClient.GetAsync(apiUrl);
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+
+                
+                var data = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(content);
+
+                
+                DataTable dataTable = new DataTable();
+                if (data != null && data.Count > 0)
+                {
+                    foreach (var key in data[0].Keys)
+                    {
+                        dataTable.Columns.Add(key);
+                    }
+
+                    foreach (var row in data)
+                    {
+                        var dataRow = dataTable.NewRow();
+                        foreach (var key in row.Keys)
+                        {
+                            dataRow[key] = row[key];
+                        }
+                        dataTable.Rows.Add(dataRow);
+                    }
+                }
+
+                return dataTable;
+            }
+
+            
+            ErrorMessageLabel.Text = $"API Error: {response.StatusCode} - {response.ReasonPhrase}";
+            return null;
+        }
+
 
         private List<decimal> CalculateMovingAverage(List<decimal> prices, int period)
         {
