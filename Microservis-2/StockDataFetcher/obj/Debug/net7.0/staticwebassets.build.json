@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "QoMrpycQEg4Bx1f81h8Nqs5zqQ3NgIFGBKCu8Mag0SE=",
+  "Source": "StockDataFetcher",
+  "BasePath": "_content/StockDataFetcher",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}
